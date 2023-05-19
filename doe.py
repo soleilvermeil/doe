@@ -1,10 +1,86 @@
 import numpy as np
-import sympy as sp
+import sympy
 from typing import Union
 
-__author__ = "Julien L."
-__licence__ = "MIT"
-__email__ = "julien.l___@epfl.ch"
+class LinearModel:
+    def __init__(self, modelspec: np.ndarray, X: np.ndarray, y: np.ndarray, coefficients: np.ndarray):
+        if isinstance(modelspec, str):
+            modelspec = model_matrix(name=modelspec, factors=X.shape[1])
+        self.modelspec = modelspec
+        self.X = X
+        self.y = y
+        self.coefficients = coefficients
+
+    def predict(self, X: Union[list, np.ndarray]) -> np.ndarray:
+        """
+        Returns the predicted response of a multiple linear regression model with given coefficients, for the data matrix X.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            The matrix of predictors.
+
+        Returns
+        -------
+        np.ndarray
+            The predicted response.
+        """
+        if isinstance(X, list):
+            X = np.array(X)
+        if len(np.shape(X)) == 1:
+            X = X.reshape(-1, 1)
+        XX = x2fx(X=X, modelspec=self.modelspec)
+        return XX @ self.coefficients
+    
+    def relative_effect(self) -> np.ndarray:
+        """
+        Returns the relative effect of each predictor variable on the response variable.
+
+        Returns
+        -------
+        np.ndarray
+            The relative effect of each factor, normalized by the effect of the constant term.
+        """
+        XX = x2fx(X=self.X, modelspec=self.modelspec)
+        delta = XX.max(axis=0) - XX.min(axis=0)
+        a0 = self.coefficients[0]
+        return self.coefficients[1:] * delta[1:] / a0
+    
+    def rmse(self) -> float:
+        """
+        Returns the root mean squared error of the model.
+
+        Returns
+        -------
+        float
+            The root mean squared error of the model.
+        """
+        return np.sqrt(np.mean((self.y - self.predict(X=self.X)) ** 2))
+    
+    def coef_names(self) -> list:
+        """
+        Returns the names of the coefficients of a model.
+
+        Returns
+        -------
+        list
+            The names of the coefficients.
+        """
+        names = []
+        for row in self.modelspec:
+            name = ""
+            for i, power in enumerate(row):
+                if power == 0:
+                    continue
+                elif power == 1:
+                    name += f":x{i+1}"
+                else:
+                    name += f":x{i+1}^{power}"
+            if name == "":
+                name = ":x0"
+            names.append(name[1:])
+        return names
+        
 
 def model_matrix(name: str, factors: int) -> np.ndarray:
     """
@@ -22,9 +98,9 @@ def model_matrix(name: str, factors: int) -> np.ndarray:
     np.ndarray
         The model matrix.
     """
-    constant = np.ones(shape=(1, factors))
+    constant = np.zeros(shape=(1, factors))
     linear = np.eye(N=factors)
-    interaction = np.array([x for x in sp.utilities.iterables.multiset_permutations([0] * (factors-2) + [1] * 2)])
+    interaction = np.array([x for x in sympy.utilities.iterables.multiset_permutations([0] * (factors-2) + [1] * 2)])[::-1]
     quadratic = 2 * np.eye(N=factors)
 
     if name == "linear":
@@ -38,15 +114,15 @@ def model_matrix(name: str, factors: int) -> np.ndarray:
     else:
         raise ValueError("Invalid model name.")
     
-def x2fx(X: np.ndarray, model: Union[str, np.ndarray]) -> np.ndarray:
+def x2fx(X: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray]) -> np.ndarray:
     """
     Converts a matrix of predictors X to a design matrix D for regression analysis. Distinct predictor variables should appear in different columns of X.
 
     Parameters
     ----------
-    X : np.ndarray
+    X : Union[list, np.ndarray]
         The matrix of predictors.
-    model : Union[str, np.ndarray]
+    model : Union[str, list, np.ndarray]
         The model matrix.
 
     Returns
@@ -54,63 +130,47 @@ def x2fx(X: np.ndarray, model: Union[str, np.ndarray]) -> np.ndarray:
     np.ndarray
         The design matrix.
     """
-    if isinstance(model, str):
-        model = model_matrix(name=model, factors=X.shape[1])
-    elif isinstance(model, np.ndarray):
-        assert X.shape[1] == model.shape[1], "The number of columns in 'X' and 'model' must be equal."
 
-    M = np.ones(shape=(X.shape[0], model.shape[0]))
+    if isinstance(X, list):
+        X = np.array(X)
+    if isinstance(modelspec, str):
+        modelspec = model_matrix(name=modelspec, factors=X.shape[1])
+    elif isinstance(modelspec, list):
+        modelspec = np.array(modelspec)
+    elif isinstance(modelspec, np.ndarray):
+        assert X.shape[1] == modelspec.shape[1], "The number of columns in 'X' and 'model' must be equal."
+
+    M = np.ones(shape=(X.shape[0], modelspec.shape[0]))
     for i in range(M.shape[0]):
         for j in range(M.shape[1]):
             for alpha in range(X.shape[1]):
-                M[i, j] *= X[i, alpha] ** model[j, alpha]
+                M[i, j] *= X[i, alpha] ** modelspec[j, alpha]
 
     return M
 
-def fitlm(X: np.ndarray, y: np.ndarray, model: Union[str, np.ndarray]) -> np.ndarray:
+def fitlm(X: Union[list, np.ndarray], y: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray] = "linear") -> LinearModel:
     """
-    Returns the coefficients of a multiple linear regression model of the response y, fit to the data matrix X.
+    Returns the linear model fit to the data matrix X.
 
     Parameters
     ----------
-    X : np.ndarray
-        The matrix of predictors.
-    y : np.ndarray
+    X : Union[list, np.ndarray]
+        The matrix of inputs.
+    y : Union[list, np.ndarray]
         The response vector.
-    model : Union[str, np.ndarray]
+    modelspec : Union[str, list, np.ndarray]
         The model matrix.
 
     Returns
     -------
-    np.ndarray
-        The coefficients of the fitted model.
+    LinearModel
+        The fitted linear model.
     """
-    XX = x2fx(X, model)
-    a, residuals, _, _ = np.linalg.lstsq(XX, y, rcond=None)
-    return a.reshape(-1)
-
-def predict(X: np.ndarray, coefficients: np.ndarray, model: Union[str, np.ndarray]) -> np.ndarray:
-    """
-    Returns the predicted response of a multiple linear regression model with given coefficients, for the data matrix X.
-
-    Parameters
-    ----------
-    X : np.ndarray
-        The matrix of predictors.
-    a : np.ndarray
-        The coefficients of the fitted model.
-    model : Union[str, np.ndarray]
-        The model matrix.
-
-    Returns
-    -------
-    np.ndarray
-        The predicted response.
-    """
-    if len(np.shape(X)) == 1:
-        X = X.reshape(1, -1)
-    XX = x2fx(X, model)
-    return XX @ coefficients
-
-def anova(X: np.ndarray, y: np.ndarray, model: Union[np.ndarray, str]) -> dict:
-    return None
+    if isinstance(X, list):
+        X = np.array(X)
+    if isinstance(y, list):
+        y = np.array(y).reshape(-1, 1)
+    XX = x2fx(X, modelspec)
+    coefficients, _, _, _ = np.linalg.lstsq(XX, y, rcond=None)
+    coefficients = coefficients.reshape(-1)
+    return LinearModel(modelspec=modelspec, X=X, y=y, coefficients=coefficients)
