@@ -1,15 +1,19 @@
 import numpy as np
 import sympy
+import scipy
 from typing import Union
+import matplotlib.pyplot as plt
+import pandas as pd
 
 class LinearModel:
-    def __init__(self, modelspec: np.ndarray, X: np.ndarray, y: np.ndarray, coefficients: np.ndarray):
+    def __init__(self, modelspec: np.ndarray, X: np.ndarray, y: np.ndarray, coefficients: np.ndarray, residuals: np.ndarray):
         if isinstance(modelspec, str):
             modelspec = model_matrix(name=modelspec, factors=X.shape[1])
         self.modelspec = modelspec
         self.X = X
         self.y = y
         self.coefficients = coefficients
+        self.residuals = residuals
 
     def predict(self, X: Union[list, np.ndarray]) -> np.ndarray:
         """
@@ -171,6 +175,6 @@ def fitlm(X: Union[list, np.ndarray], y: Union[list, np.ndarray], modelspec: Uni
     if isinstance(y, list):
         y = np.array(y).reshape(-1, 1)
     XX = x2fx(X, modelspec)
-    coefficients, _, _, _ = np.linalg.lstsq(XX, y, rcond=None)
+    coefficients, residuals, _, _ = np.linalg.lstsq(XX, y, rcond=None)
     coefficients = coefficients.reshape(-1)
-    return LinearModel(modelspec=modelspec, X=X, y=y, coefficients=coefficients)
+    return LinearModel(modelspec=modelspec, X=X, y=y, coefficients=coefficients, residuals=residuals)
