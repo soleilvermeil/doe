@@ -178,3 +178,39 @@ def fitlm(X: Union[list, np.ndarray], y: Union[list, np.ndarray], modelspec: Uni
     coefficients, residuals, _, _ = np.linalg.lstsq(XX, y, rcond=None)
     coefficients = coefficients.reshape(-1)
     return LinearModel(modelspec=modelspec, X=X, y=y, coefficients=coefficients, residuals=residuals)
+
+def normplot(data: Union[list, np.ndarray]) -> Union[plt.Figure, plt.Axes]:
+    """
+    Returns a normal probability plot of the data.
+    
+    Parameters
+    ----------
+    data : Union[list, np.ndarray]
+        The data to plot.
+        
+    Returns
+    -------
+    Union[plt.Figure, plt.Axes]
+        The figure and axes of the plot.
+    """
+    def f(x, a, b):
+        return np.exp(a + b * x) / (1 + np.exp(a + b * x))
+    if isinstance(data, list):
+        data = np.array(data)
+    data = np.sort(data)
+    X = data
+    Y = np.linspace(0, 1, len(X)+2)[1:-1]
+    fig, ax = plt.subplots()
+    ax.plot(X, Y, "k+")
+    ylim = ax.get_ylim()
+    popt, _ = scipy.optimize.curve_fit(f, X, Y, sigma=X)
+    X_fit = np.linspace(start=X.min(), stop=X.max(), num=10)
+    Y_fit = f(X_fit, *popt)
+    X_fit = X_fit[(Y_fit > 0) & (Y_fit < 1)]
+    Y_fit = Y_fit[(Y_fit > 0) & (Y_fit < 1)]
+    ax.plot(X_fit, Y_fit, "r-")
+    ax.set_yscale("logit")
+    ax.set_ylim(ylim)
+    plt.xlabel("Data")
+    plt.ylabel("Probability")
+    return fig, ax
