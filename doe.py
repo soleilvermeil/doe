@@ -9,7 +9,7 @@ import warnings
 class LinearModel:
     def __init__(self, modelspec: np.ndarray, X: np.ndarray, y: np.ndarray, coefficients: np.ndarray, residuals: np.ndarray):
         if isinstance(modelspec, str):
-            modelspec = model_matrix(name=modelspec, factors=X.shape[1])
+            modelspec = modelspec2matrix(name=modelspec, factors=X.shape[1])
         self.modelspec = modelspec
         self.X = X
         self.y = y
@@ -34,7 +34,7 @@ class LinearModel:
             x = np.array(x)
         if len(np.shape(x)) == 1:
             x = x.reshape(-1, 1)
-        XX = x2fx(X=x, modelspec=self.modelspec)
+        XX = x2fx(x=x, modelspec=self.modelspec)
         return XX @ self.coefficients
     
     def relative_effect(self) -> np.ndarray:
@@ -46,7 +46,7 @@ class LinearModel:
         np.ndarray
             The relative effect of each factor, normalized by the effect of the constant term.
         """
-        XX = x2fx(X=self.X, modelspec=self.modelspec)
+        XX = x2fx(x=self.X, modelspec=self.modelspec)
         delta = XX.max(axis=0) - XX.min(axis=0)
         a0 = self.coefficients[0]
         return self.coefficients[1:] * delta[1:] / a0
@@ -119,7 +119,7 @@ def modelspec2matrix(name: str, factors: int) -> np.ndarray:
     else:
         raise ValueError("Invalid model name.")
     
-def x2fx(X: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray]) -> np.ndarray:
+def x2fx(x: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray]) -> np.ndarray:
     """
     Converts a data matrix to a design matrix.
 
@@ -136,22 +136,22 @@ def x2fx(X: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray]) ->
         The design matrix.
     """
 
-    if isinstance(X, list):
-        X = np.array(X)
+    if isinstance(x, list):
+        x = np.array(x)
     if isinstance(modelspec, str):
-        modelspec = model_matrix(name=modelspec, factors=X.shape[1])
+        modelspec = modelspec2matrix(name=modelspec, factors=x.shape[1])
     elif isinstance(modelspec, list):
         modelspec = np.array(modelspec)
     elif isinstance(modelspec, np.ndarray):
-        assert X.shape[1] == modelspec.shape[1], "The number of columns in 'X' and 'model' must be equal."
+        assert x.shape[1] == modelspec.shape[1], "The number of columns in 'X' and 'model' must be equal."
 
-    M = np.ones(shape=(X.shape[0], modelspec.shape[0]))
-    for i in range(M.shape[0]):
-        for j in range(M.shape[1]):
-            for alpha in range(X.shape[1]):
-                M[i, j] *= X[i, alpha] ** modelspec[j, alpha]
+    X = np.ones(shape=(x.shape[0], modelspec.shape[0]))
+    for i in range(X.shape[0]):
+        for j in range(X.shape[1]):
+            for alpha in range(x.shape[1]):
+                X[i, j] *= x[i, alpha] ** modelspec[j, alpha]
 
-    return M
+    return X
 
 def fitlm(x: Union[list, np.ndarray], y: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray] = "linear") -> LinearModel:
     """
