@@ -4,6 +4,7 @@ import scipy
 from typing import Union
 import matplotlib.pyplot as plt
 import pandas as pd
+import warnings
 
 class LinearModel:
     def __init__(self, modelspec: np.ndarray, X: np.ndarray, y: np.ndarray, coefficients: np.ndarray, residuals: np.ndarray):
@@ -15,30 +16,30 @@ class LinearModel:
         self.coefficients = coefficients
         self.residuals = residuals
 
-    def predict(self, X: Union[list, np.ndarray]) -> np.ndarray:
+    def predict(self, x: Union[list, np.ndarray]) -> np.ndarray:
         """
-        Returns the predicted response of a multiple linear regression model with given coefficients, for the data matrix X.
+        Returns the predicted response of a multiple linear regression model for the data matrix X.
 
         Parameters
         ----------
         X : np.ndarray
-            The matrix of predictors.
+            The data matrix on which the model should try to predict the response.
 
         Returns
         -------
         np.ndarray
             The predicted response.
         """
-        if isinstance(X, list):
-            X = np.array(X)
-        if len(np.shape(X)) == 1:
-            X = X.reshape(-1, 1)
-        XX = x2fx(X=X, modelspec=self.modelspec)
+        if isinstance(x, list):
+            x = np.array(x)
+        if len(np.shape(x)) == 1:
+            x = x.reshape(-1, 1)
+        XX = x2fx(X=x, modelspec=self.modelspec)
         return XX @ self.coefficients
     
     def relative_effect(self) -> np.ndarray:
         """
-        Returns the relative effect of each predictor variable on the response variable.
+        Returns the relative effect of each coefficient.
 
         Returns
         -------
@@ -52,14 +53,14 @@ class LinearModel:
     
     def rmse(self) -> float:
         """
-        Returns the root mean squared error of the model.
+        Returns the root mean squared error of the model's predicted response for the inputs that were used to fit the model.
 
         Returns
         -------
         float
-            The root mean squared error of the model.
+            The root mean squared error.
         """
-        return np.sqrt(np.mean((self.y - self.predict(X=self.X)) ** 2))
+        return np.sqrt(np.mean((self.y - self.predict(x=self.X)) ** 2))
     
     def coef_names(self) -> list:
         """
@@ -86,9 +87,9 @@ class LinearModel:
         return names
         
 
-def model_matrix(name: str, factors: int) -> np.ndarray:
+def modelspec2matrix(name: str, factors: int) -> np.ndarray:
     """
-    Returns a model matrix for a given model name and number of factors.
+    Returns the matrix of a given model specification.
 
     Parameters
     ----------
@@ -100,7 +101,7 @@ def model_matrix(name: str, factors: int) -> np.ndarray:
     Returns
     -------
     np.ndarray
-        The model matrix.
+        The matrix of the model specification where each column corresponds to a factor, and each row corresponds to a term in the model.
     """
     constant = np.zeros(shape=(1, factors))
     linear = np.eye(N=factors)
@@ -120,14 +121,14 @@ def model_matrix(name: str, factors: int) -> np.ndarray:
     
 def x2fx(X: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray]) -> np.ndarray:
     """
-    Converts a matrix of predictors X to a design matrix D for regression analysis. Distinct predictor variables should appear in different columns of X.
+    Converts a data matrix to a design matrix.
 
     Parameters
     ----------
     X : Union[list, np.ndarray]
-        The matrix of predictors.
+        The data matrix.
     model : Union[str, list, np.ndarray]
-        The model matrix.
+        The model specification. It can either be a string (among "linear", "interaction", "quadratic", "purequadratic"), or an array where each column corresponds to a factor, and each row corresponds to a term in the model.
 
     Returns
     -------
@@ -152,34 +153,34 @@ def x2fx(X: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray]) ->
 
     return M
 
-def fitlm(X: Union[list, np.ndarray], y: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray] = "linear") -> LinearModel:
+def fitlm(x: Union[list, np.ndarray], y: Union[list, np.ndarray], modelspec: Union[str, list, np.ndarray] = "linear") -> LinearModel:
     """
     Returns the linear model fit to the data matrix X.
 
     Parameters
     ----------
     X : Union[list, np.ndarray]
-        The matrix of inputs.
+        The data matrix.
     y : Union[list, np.ndarray]
-        The response vector.
+        The vector of responses.
     modelspec : Union[str, list, np.ndarray]
-        The model matrix.
+        The model specification. It can either be a string (among "linear", "interaction", "quadratic", "purequadratic"), or an array where each column corresponds to a factor, and each row corresponds to a term in the model.
 
     Returns
     -------
     LinearModel
         The fitted linear model.
     """
-    if isinstance(X, list):
-        X = np.array(X)
+    if isinstance(x, list):
+        x = np.array(x)
     if isinstance(y, list):
         y = np.array(y).reshape(-1, 1)
-    XX = x2fx(X, modelspec)
-    coefficients, residuals, _, _ = np.linalg.lstsq(XX, y, rcond=None)
+    X = x2fx(x, modelspec)
+    coefficients, residuals, _, _ = np.linalg.lstsq(X, y, rcond=None)
     coefficients = coefficients.reshape(-1)
-    return LinearModel(modelspec=modelspec, X=X, y=y, coefficients=coefficients, residuals=residuals)
+    return LinearModel(modelspec=modelspec, X=x, y=y, coefficients=coefficients, residuals=residuals)
 
-def normplot(data: Union[list, np.ndarray]) -> Union[plt.Figure, plt.Axes]:
+def normplot(data: Union[list, np.ndarray]) -> tuple[plt.Figure, plt.Axes]:
     """
     Returns a normal probability plot of the data.
     
@@ -214,3 +215,77 @@ def normplot(data: Union[list, np.ndarray]) -> Union[plt.Figure, plt.Axes]:
     plt.xlabel("Data")
     plt.ylabel("Probability")
     return fig, ax
+
+def ff2n(n: int) -> np.ndarray:
+    """
+    Returns a full factorial data matrix.
+
+    Parameters
+    ----------
+    n : int
+        The number of factors.
+
+    Returns
+    -------
+    np.ndarray
+        The data matrix.
+    """
+    if n == 1:
+        return np.array([[-1], [1]])
+    else:
+        return np.append(
+            np.append(-1 * np.ones(shape=(2 ** (n - 1), 1)), ff2n(n - 1), axis=1),
+            np.append(np.ones(shape=(2 ** (n - 1), 1)), ff2n(n - 1), axis=1),
+            axis=0
+        )
+
+
+def pbdesign(n: int) -> np.ndarray:
+    """
+    Returns a Plackett-Burman data matrix.
+
+    Parameters
+    ----------
+    n : int
+        The number of factors.
+
+    Returns
+    -------
+    np.ndarray
+        The data matrix.
+    """
+    D = scipy.linalg.hadamard(n)[:, 1:]
+    return D[:n, :n - 1]
+
+def fracfact(gen: str) -> np.ndarray:
+    """
+    Returns a fractional factorial data matrix.
+
+    Parameters
+    ----------
+    gen : str
+        The generator string, consisting of characters or group of characters for each factor.
+
+    Returns
+    -------
+    np.ndarray
+        The data matrix.
+    """
+    gen_splitted = gen.split(" ")
+    gen_sorted = sorted(gen_splitted, key=len)
+    number_of_primordial_columns = sum([len(g) == 1 for g in gen_sorted])
+    F = ff2n(number_of_primordial_columns)
+    G = np.zeros(shape=[np.shape(F)[0], len(gen_splitted)])
+    for i in range(len(gen_splitted)):
+        if len(gen_splitted[i]) == 1:
+            G[:, i] = F[:, gen_sorted.index(gen_splitted[i])]
+        else:
+            G[:, i] = G[:, gen_splitted.index(gen_splitted[i][0])]
+            for letter in gen_splitted[i][1:]:
+                G[:, i] *= F[:, gen_splitted.index(letter)]
+    return G
+
+def t(confidence: float, dof: float) -> float:
+    if confidence > 0.5:
+        warnings.warn("Parameter 'confidence' corresponds here to the domain outside the interval, In the general case, this value is meant to be small. Be sure you are not confusing it.", category=Warning)
+    return scipy.stats.t.ppf(1-confidence, dof)
